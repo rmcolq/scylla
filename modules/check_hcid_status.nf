@@ -18,8 +18,8 @@ process check_hcid {
         path hcid_defs
         path hcid_refs
     output:
-        tuple val(unique_id), path("*warning.json"), emit: warnings
-        tuple val(unique_id), path("*reads.fq"), emit: reads
+        tuple val(unique_id), path("*.warning.json"), emit: warnings, optional: true
+        tuple val(unique_id), path("*.reads.fq"), emit: reads, optional: true
         tuple val(unique_id), path("hcid.counts.csv"), emit: counts
     script:
         preset = ""
@@ -36,13 +36,6 @@ process check_hcid {
             -i ${hcid_defs} \
             -d ${hcid_refs} \
             -p "hcid" ${preset}
-
-        PATTERN=(*.warning.json)
-        if [ ! -f \${PATTERN[0]} ]; then
-            echo "Found no warning files"
-            touch no_warning.json
-            touch no_reads.fq
-        fi
         """
 }
 
@@ -57,7 +50,12 @@ workflow check_hcid_status {
 
         kreport_ch.join(fastq_ch).set{input_ch}
         check_hcid(input_ch, taxonomy, hcid_defs, hcid_refs)
-        check_hcid.out.warnings.set{ warning_ch }
+        empty_file = file("$projectDir/resources/empty_file")
+                kreport_ch.map{unique_id, database_name, kreport -> [unique_id, empty_file]}
+                    .concat(check_hcid.out.warnings)
+                    .collectFile()
+                    .map{f -> [f.simpleName, f]}
+                    .set{warning_ch}
     emit:
         warning_ch
 }
